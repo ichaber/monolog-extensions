@@ -12,6 +12,7 @@
  */
 namespace Graze\Monolog\Handler;
 
+use function error_log;
 use Graze\Monolog\Formatter\RaygunFormatter;
 use Monolog\Handler\AbstractProcessingHandler;
 use Monolog\Logger;
@@ -22,18 +23,34 @@ class RaygunHandler extends AbstractProcessingHandler
     /**
      * @var RaygunClient
      */
-    protected $client;
+    protected $client = null;
 
     /**
-     * @param RaygunClient $client
+     * @param RaygunClient|null $client
      * @param int $level
      * @param bool $bubble
      */
-    public function __construct(RaygunClient $client, $level = Logger::DEBUG, $bubble = true)
+    public function __construct($client = null, $level = Logger::DEBUG, $bubble = true)
     {
         $this->client = $client;
 
         parent::__construct($level, $bubble);
+    }
+
+    public function setClient(RaygunClient $client)
+    {
+        $this->client = $client;
+    }
+
+    /**
+     * @return null|RaygunClient Returns the instance of RaygunClient if set or null otherwise
+     */
+    public function getClient()
+    {
+        if (!$this->client instanceof RaygunClient) {
+            error_log("RaygunClient is not set, but getter is called.");
+        }
+        return $this->client;
     }
 
     /**
@@ -41,7 +58,7 @@ class RaygunHandler extends AbstractProcessingHandler
      */
     public function isHandling(array $record)
     {
-        if(parent::isHandling($record)) {
+        if(parent::isHandling($record) && $this->client instanceof RaygunClient) {
             $context = $record['context'];
 
             //Ensure only valid records will be handled and no InvalidArgumentException will be thrown
@@ -97,16 +114,19 @@ class RaygunHandler extends AbstractProcessingHandler
      */
     protected function writeError(array $record, array $tags = array(), array $customData = array(), $timestamp = null)
     {
-        $context = $record['context'];
-        $this->client->SendError(
-            0,
-            $record['message'],
-            $context['file'],
-            $context['line'],
-            $tags,
-            $customData,
-            $timestamp
-        );
+        $client = $this->getClient();
+        if (!empty($client)) {
+            $context = $record['context'];
+            $this->getClient()->SendError(
+                0,
+                $record['message'],
+                $context['file'],
+                $context['line'],
+                $tags,
+                $customData,
+                $timestamp
+            );
+        }
     }
 
     /**
@@ -117,7 +137,10 @@ class RaygunHandler extends AbstractProcessingHandler
      */
     protected function writeException(array $record, array $tags = array(), array $customData = array(), $timestamp = null)
     {
-        $this->client->SendException($record['context']['exception'], $tags, $customData, $timestamp);
+        $client = $this->getClient();
+        if (!empty($client)) {
+            $this->getClient()->SendException($record['context']['exception'], $tags, $customData, $timestamp);
+        }
     }
 
     /**
